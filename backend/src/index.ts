@@ -5,10 +5,13 @@ dotenv.config();
 import { Hono } from 'hono'
 import Router from "./routes/api1"
 import { PrismaClient } from '@prisma/client/edge'
+import { cors } from 'hono/cors'
 
 
 
 const app = new Hono();
+
+app.use('*', cors({ origin: '*' }));
 
 app.get('/', (c) => {
   return c.text('Hello Hono!')

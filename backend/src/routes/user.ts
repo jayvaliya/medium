@@ -91,3 +91,29 @@ userRouter.post("/login", async (c) => {
     }
 });
 
+userRouter.post("/me", async (c) => {
+    try {
+        // @ts-ignore
+        const prisma = c.get('prisma');
+        const body = await c.req.json();
+        const token = body['Authorization'];
+        
+        if(!token) {
+            return c.json({ message: "token not found" }, 400);
+        }
+
+        const payload = await verify(token, c.env.JWT_SECRET);
+        if(!payload || !payload.userId) {
+            return c.json({ message: "invalid token" }, 400);
+        }
+        const user = await prisma.user.findFirst({ where: { id: payload.userId } });
+        if (!user) {
+            return c.json({ message: "user not found" }, 400);
+        }
+
+        return c.json({ user }, 200);
+    } catch (error) {
+        return c.json({ message: "error while logging in", error }, 400);
+    }
+
+})

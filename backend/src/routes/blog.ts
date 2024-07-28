@@ -114,13 +114,24 @@ blogRouter.get("/bulk", async (c) => {
   try {
     const prisma = c.get("prisma");
 
+    // Fetch all blogs
     const blogs = await prisma.blog.findMany();
-    return c.json({ blogs });
+
+    const transformedBlogs = blogs.map((blog) => {
+      return {
+        title: blog.title,
+        content: blog.content.substring(0, 50)
+      };
+    });
+
+    // Return the transformed blogs
+    return c.json({ blogs: transformedBlogs });
   } catch (error) {
     c.status(500);
     return c.json({ error: "Error fetching blogs", details: error });
   }
 });
+
 
 // get blog with id
 blogRouter.get("/:id", async (c) => {

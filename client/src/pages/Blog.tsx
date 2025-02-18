@@ -1,56 +1,147 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import EditorJS, { OutputData } from '@editorjs/editorjs';
+import Header from '@editorjs/header';
+import List from '@editorjs/list';
+import Paragraph from '@editorjs/paragraph';
 import axios from 'axios';
 
+interface BlogData {
+  title: string;
+  content: string;
+  // Add other blog properties as needed
+}
 
 export default function Blog() {
   const { id } = useParams();
-  const [blog, setBlog] = useState({});
+  const [blog, setBlog] = useState<BlogData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [parsedContent, setParsedContent] = useState<OutputData | null>(null);
+  const editorRef = useRef<EditorJS | null>(null);
+  const holderRef = useRef<HTMLDivElement | null>(null);
 
+  // Try to parse the blog content
+  const tryParseContent = (content: string) => {
+    try {
+      const parsed = JSON.parse(content);
+      // Validate that it's an EditorJS data structure
+      if (parsed && parsed.blocks) {
+        return parsed as OutputData;
+      }
+      return null;
+    } catch (e) {
+      console.log('Content parsing failed:', e);
+      return null;
+    }
+  };
+
+  // Fetch blog data
   useEffect(() => {
-    console.log('id:', id);
     const url = `http://localhost:8787/api/v1/blog/${id}`;
 
-    axios.get(url)
+    axios
+      .get(url)
       .then((response) => {
-        setBlog(response.data);
+        setBlog(response.data.blog);
+        const parsed = tryParseContent(response.data.blog.content);
+        setParsedContent(parsed);
+        setLoading(false);
       })
       .catch((error) => {
-        console.error('There was an error!', error);
+        setError(error.response ? error.response.data : "Error fetching blog data");
+        setLoading(false);
       });
-
   }, [id]);
-  return (
-    <>
-      <main>
-        <article>
-          <header className="mx-auto mt-20 max-w-screen-lg rounded-t-lg bg-white pt-16 text-center shadow-lg">
-            <p className="text-gray-500">Published April 4, 2022</p>
-            <h1 className="mt-2 text-4xl font-bold text-gray-900 sm:text-5xl">hii</h1>
-            <p className="mt-6 text-lg text-gray-700">You've come way farther than you expected</p>
-            <img className="-z-10 absolute top-0 left-0 mt-10 h-96 w-full object-cover" src="https://images.unsplash.com/photo-1504672281656-e4981d70414b?ixlib=rb-1.2.1&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1170&q=80" alt="" />
-          </header>
 
-          <div className="mx-auto max-w-screen-lg space-y-12 rounded-b-lg bg-white px-8 pt-10 pb-20 font-serif text-lg tracking-wide text-gray-700 sm:shadow-lg">
-            <h2 className="text-2xl font-semibold">First Steps to Life Betterment</h2>
-            <blockquote className="max-w-lg border-l-4 px-4">
-              Lorem ipsum dolor sit amet consectetur adipisicing elit. Assumenda maiores tempora quod ducimus dolore!
-              <span className="whitespace-nowrap text-sm">— Daniel Lehmer</span>
-            </blockquote>
-            <p>Lorem ipsum dolor sit amet consectetur adipisicing elit. Iusto enim maxime sit laudantium! Dolore atque, maxime iusto ut quas distinctio reiciendis animi voluptatibus soluta molestias, mollitia officiis laboriosam illum earum.</p>
-            <p>Lorem ipsum dolor sit amet consectetur adipisicing elit. Accusamus similique reiciendis et recusandae provident repellendus rem doloremque eaque error assumenda?</p>
-          </div>
-        </article>
-      </main>
+  // Initialize EditorJS
+  useEffect(() => {
+    if (!holderRef.current || !parsedContent || editorRef.current) return;
 
-      <div className="w-fit mx-auto mt-10 flex space-x-2">
-        <div className="h-0.5 w-2 bg-gray-600"></div>
-        <div className="h-0.5 w-32 bg-gray-600"></div>
-        <div className="h-0.5 w-2 bg-gray-600"></div>
+    const editor = new EditorJS({
+      holder: holderRef.current,
+      tools: {
+        header: {
+          // @ts-expect-error Header is not a valid type
+          class: Header,
+          config: {
+            placeholder: 'Enter a header',
+            levels: [2, 3, 4],
+            defaultLevel: 2
+          },
+          inlineToolbar: false
+        },
+        list: {
+          // @ts-expect-error Header is not a valid type
+          class: List,
+          inlineToolbar: false
+        },
+        paragraph: {
+          // @ts-expect-error Header is not a valid type
+          class: Paragraph,
+          inlineToolbar: false
+        }
+      },
+      data: parsedContent,
+      readOnly: true,
+      onReady: () => {
+        console.log('Editor is ready');
+      }
+    });
+
+    editorRef.current = editor;
+
+    return () => {
+      if (editorRef.current && typeof editorRef.current.destroy === 'function') {
+        try {
+          editorRef.current.destroy();
+          editorRef.current = null;
+        } catch (e) {
+          console.error('Error destroying editor:', e);
+        }
+      }
+    };
+  }, [parsedContent]);
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
       </div>
+    );
+  }
 
-      
-    </>
+  if (error) {
+    return (
+      <div className="flex justify-center items-center min-h-screen">
+        <div className="text-red-600">Error: {error}</div>
+      </div>
+    );
+  }
 
-  )
+  if (!blog) {
+    return null;
+  }
+
+  return (
+    <main className="min-h-screen">
+      <article>
+        <header className="mx-auto max-w-screen-lg rounded-t-lg pt-16 text-center relative">
+          <h1 className="mt-2 text-4xl px-5 font-bold sm:text-5xl relative z-10">
+            {blog.title}
+          </h1>
+        </header>
+
+        <div className="mx-auto max-w-screen-lg rounded-b-lg px-10 pt-10 pb-20">
+          {parsedContent ? (
+            <div ref={holderRef} className="prose max-w-none" />
+          ) : (
+            <div className="font-serif text-lg tracking-wide text-gray-700">
+              <p className="whitespace-pre-wrap">{blog.content}</p>
+            </div>
+          )}
+        </div>
+      </article>
+    </main>
+  );
 }

@@ -17,9 +17,6 @@ interface CustomContext extends Context {
 
 export const blogRouter = new Hono<CustomContext>();
 
-blogRouter.get("/", (c) => {
-  return c.text("from api/v1/blog");
-});
 
 blogRouter.use('*', async (c, next) => {
   if (c.req.method === "GET") {
@@ -62,6 +59,7 @@ blogRouter.use("*", async (c, next) => {
 
 // post new blog
 blogRouter.post("/", async (c) => {
+  // console.log("inside post blog");
   try {
     const body = await c.req.json();
 
@@ -82,9 +80,11 @@ blogRouter.post("/", async (c) => {
       data: { title, content, authorId }
     });
 
-    return c.json({ message: "Blog created", blog });
+    return c.json({ message: "Blog created", blog }, 201);
   } catch (error) {
-    return c.json({ message: "Error creating blog post", error }, 500);
+    console.error("Error creating blog post:", error);
+    // @ts-ignore
+    return c.json({ message: "Error creating blog post", error: error.message }, 500);
   }
 });
 
@@ -119,8 +119,9 @@ blogRouter.get("/bulk", async (c) => {
 
     const transformedBlogs = blogs.map((blog) => {
       return {
+        id: blog.id,
         title: blog.title,
-        content: blog.content.substring(0, 50)
+        content: blog.content.substring(0, 70).concat("....."),
       };
     });
 
@@ -129,6 +130,38 @@ blogRouter.get("/bulk", async (c) => {
   } catch (error) {
     c.status(500);
     return c.json({ error: "Error fetching blogs", details: error });
+  }
+});
+
+// search blogs
+blogRouter.get('/search', async (c) => {
+  try {
+    // const query = c.req.param('query')?.trim();
+    const query = c.req.query('query')?.trim();
+
+    if (!query) {
+      return c.json({ blogs: [] }); // Return empty results if no query is provided
+    }
+
+    const prisma = c.get('prisma');
+
+    const blogs = await prisma.blog.findMany({
+      where: {
+        OR: [
+          { title: { contains: query, mode: 'insensitive' } },
+          { content: { contains: query, mode: 'insensitive' } }
+        ]
+      }
+    });
+
+    return c.json({
+      blogs: blogs.length > 0
+        ? blogs.map((blog) => ({ id: blog.id, title: blog.title }))
+        : []
+    });
+  } catch (error) {
+    console.error("Error fetching blogs:", error);
+    return c.json({ error: "Error fetching blogs", details: error.message }, 500);
   }
 });
 

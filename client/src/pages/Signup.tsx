@@ -28,7 +28,7 @@ export default function SignUp() {
 
     try {
       const response = await axios.post(
-        "https://backend.valiyajay555.workers.dev/api/v1/user/signup",
+        "http:127.0.0.1:8787/api/v1/user/signup",
         {
           email: formValues.email,
           password: formValues.password,
@@ -37,7 +37,7 @@ export default function SignUp() {
       );
       if (response.status === 200) {
         toast.update(id, {
-          render: "Logged in",
+          render: "Signup successful",
           type: 'success',
           isLoading: false,
           autoClose: 5000,
@@ -53,14 +53,14 @@ export default function SignUp() {
       }
     } catch (error) {
       console.error(error);
-      if (error.response) {
+      if (axios.isAxiosError(error) && error.response) {
         toast.update(id, {
           render: error.response.data.message,
           type: 'error',
           isLoading: false,
           autoClose: 5000,
         });
-      } else if (error.request) {
+      } else if (axios.isAxiosError(error) && error.request) {
         toast.update(id, {
           render: 'Server is not responding',
           type: 'error',
@@ -153,8 +153,8 @@ export default function SignUp() {
               </div>
               <button
                 type='submit'
-                className='w-full bg-primary-600 hover:bg-primary-700 focus:ring-4 focus:outline-none bg-blue-600 focus:ring-primary-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center text-white'>
-                Create an account
+                className='w-full bg-primary-600 hover:bg-primary-700 focus:ring-4 focus:outline-none bg-black focus:ring-primary-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center text-white'>
+                Create an Account
               </button>
               <p className='text-sm font-light text-gray-500'>
                 Already have an account?{' '}

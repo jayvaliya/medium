@@ -4,7 +4,6 @@ import dotenv from 'dotenv';
 dotenv.config();
 import { Hono } from 'hono'
 import Router from "./routes/api1"
-import { PrismaClient } from '@prisma/client/edge'
 import { cors } from 'hono/cors'
 
 
@@ -24,4 +23,4 @@ app.all('*', (c) => {
   return c.json({ message: "route not found" })
 })
 
-export default app
+export default app;

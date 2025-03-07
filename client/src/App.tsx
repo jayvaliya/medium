@@ -8,39 +8,9 @@ import Navbar from './components/Navbar';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import Home from './pages/Home';
-import { useEffect } from 'react';
-import axios from 'axios';
-import Editor from './pages/Editor';
-import { userAtom } from './store/user';
-import { useRecoilState } from 'recoil';
+import Profile from './pages/Profile';
 
 function App() {
-  const [user, setUser] = useRecoilState(userAtom);
-
-  useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const token = await localStorage.getItem("token");
-        if (!token) {
-          console.error("Token not found");
-          return;
-        }
-
-        const { data } = await axios.get("http://127.0.0.1:8787/api/v1/user/me", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        setUser(data.user);
-        console.log('user:', user)
-      } catch (error) {
-        console.error("There was an error!", error);
-      }
-    };
-
-    fetchUser();
-  }, []);
-
-
   return (
     <div className='font-inter'>
       <BrowserRouter>
@@ -52,7 +22,8 @@ function App() {
             <Route path='/signin' element={<Signin />} />
             <Route path='/signup' element={<Signup />} />
             <Route path='/draft' element={<Draft />} />
-            <Route path='/editor' element={<Editor />} />
+            <Route path='/new-Story' element={<Draft />} />
+            <Route path="/profile/:id" element={<Profile />} />
 
           </Routes>
         </div>

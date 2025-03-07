@@ -13,8 +13,11 @@ export const sighupSchema = z.object({
 
 export const blogPostSchema = z.object({
     title: z.string(),
-    content: z.string()
-})
+    content: z.array(z.object({
+        insert: z.string().or(z.record(z.any())).optional(),
+        attributes: z.record(z.any()).optional()
+    }))
+});
 
 export const blogUpdateSchema = z.object({
     title: z.string(),

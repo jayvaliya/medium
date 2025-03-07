@@ -149,6 +149,11 @@ userRouter.get("/:id", async (c) => {
                     orderBy: {
                         id: 'desc'
                     }
+                },
+                _count: {
+                    select: {
+                        likes: true
+                    }
                 }
             }
         });
@@ -157,17 +162,11 @@ userRouter.get("/:id", async (c) => {
             return c.json({ message: "User not found" }, 404);
         }
 
-        const processedPosts = user.posts.map((post: any) => ({
-            ...post,
-            content: post.content.substring(0, 50) + (post.content.length > 50 ? '...' : '')
-        }));
-
-        const userProfile = {
+        // Return user with like count
+        return c.json({
             ...user,
-            posts: processedPosts
-        };
-
-        return c.json(userProfile, 200);
+            likeCount: user._count.likes
+        }, 200);
     } catch (error: any) {
         console.error("Error fetching user profile:", error);
         return c.json({ message: "Error while fetching profile", error: error.message }, 500);

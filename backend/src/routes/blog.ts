@@ -2,7 +2,7 @@ import { PrismaClient } from '@prisma/client/edge';
 import { Hono, Context } from 'hono';
 import { decode, sign, verify } from 'hono/jwt';
 import { withAccelerate } from '@prisma/extension-accelerate';
-import { blogPostSchema, blogUpdateSchema } from '@jayvaliyaa/medium-common';
+import { blogPostSchema, blogUpdateSchema } from '../../../common/src/index';
 
 interface CustomContext extends Context {
   Bindings: {
@@ -17,7 +17,7 @@ interface CustomContext extends Context {
 
 export const blogRouter = new Hono<CustomContext>();
 
-
+// auth middleware
 blogRouter.use('*', async (c, next) => {
   if (c.req.method === "GET") {
     await next();
@@ -47,6 +47,7 @@ blogRouter.use('*', async (c, next) => {
   }
 });
 
+// prisma middleware
 blogRouter.use("*", async (c, next) => {
   const prisma = new PrismaClient({
     datasourceUrl: c.env.DATABASE_URL,
@@ -57,33 +58,36 @@ blogRouter.use("*", async (c, next) => {
   await next();
 });
 
-// post new blog
+// Post new blog
 blogRouter.post("/", async (c) => {
-  // console.log("inside post blog");
   try {
     const body = await c.req.json();
 
     const parsed = blogPostSchema.safeParse(body);
     if (!parsed.success) {
-      return c.json({ message: "invalid input", error: parsed.error }, 400);
+      return c.json({ message: "Invalid input", error: parsed.error }, 400);
     }
-    const { title, content } = parsed.data;
 
-    const authorId = c.get('userId');
+    const { title, content } = parsed.data;
+    const authorId = c.get("userId");
     if (!authorId) {
       return c.json({ message: "User ID not provided" }, 400);
     }
 
-    const prisma = c.get('prisma');
+    const prisma = c.get("prisma");
 
+    // Ensure content is stored as JSON
     const blog = await prisma.blog.create({
-      data: { title, content, authorId }
+      data: {
+        title,
+        content: content,
+        authorId,
+      },
     });
 
     return c.json({ message: "Blog created", blog }, 201);
   } catch (error) {
     console.error("Error creating blog post:", error);
-    // @ts-ignore
     return c.json({ message: "Error creating blog post", error: error.message }, 500);
   }
 });
@@ -114,18 +118,56 @@ blogRouter.get("/bulk", async (c) => {
   try {
     const prisma = c.get("prisma");
 
-    // Fetch all blogs
-    const blogs = await prisma.blog.findMany();
+    // Extract user ID from token if available
+    let userId = null;
+    const authHeader = c.req.header("Authorization");
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      try {
+        const token = authHeader.split(" ")[1];
+        const decoded = await verify(token, c.env.JWT_SECRET);
+        // Fix: use userId instead of id
+        userId = decoded.userId;
+      } catch (error) {
+        // Invalid token, continue without user context
+      }
+    }
 
-    const transformedBlogs = blogs.map((blog) => {
-      return {
-        id: blog.id,
-        title: blog.title,
-        content: blog.content.substring(0, 70).concat("....."),
-      };
+    const blogs = await prisma.blog.findMany({
+      include: {
+        author: {
+          select: { id: true, name: true }
+        },
+        _count: {
+          select: { likes: true }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
     });
 
-    // Return the transformed blogs
+    // Get user likes if authenticated
+    const userLikes = new Set();
+    if (userId) {
+      const likes = await prisma.like.findMany({
+        where: {
+          userId,
+          blogId: { in: blogs.map(b => b.id) }
+        },
+        select: { blogId: true }
+      });
+
+      likes.forEach(like => userLikes.add(like.blogId));
+    }
+
+    const transformedBlogs = blogs.map(blog => ({
+      id: blog.id,
+      title: blog.title,
+      content: blog.content,
+      author: blog.author,
+      createdAt: blog.createdAt.toISOString(),
+      likeCount: blog._count.likes,
+      userLiked: userLikes.has(blog.id)
+    }));
+
     return c.json({ blogs: transformedBlogs });
   } catch (error) {
     c.status(500);
@@ -136,11 +178,10 @@ blogRouter.get("/bulk", async (c) => {
 // search blogs
 blogRouter.get('/search', async (c) => {
   try {
-    // const query = c.req.param('query')?.trim();
     const query = c.req.query('query')?.trim();
 
     if (!query) {
-      return c.json({ blogs: [] }); // Return empty results if no query is provided
+      return c.json({ blogs: [] });
     }
 
     const prisma = c.get('prisma');
@@ -148,8 +189,7 @@ blogRouter.get('/search', async (c) => {
     const blogs = await prisma.blog.findMany({
       where: {
         OR: [
-          { title: { contains: query, mode: 'insensitive' } },
-          { content: { contains: query, mode: 'insensitive' } }
+          { title: { contains: query, mode: 'insensitive' } }
         ]
       }
     });
@@ -165,21 +205,135 @@ blogRouter.get('/search', async (c) => {
   }
 });
 
-
-// get blog with id
+// Get blog with ID
 blogRouter.get("/:id", async (c) => {
   try {
     const id = c.req.param("id");
+    const prisma = c.get("prisma");
 
-    const prisma = c.get('prisma');
+    // Extract user ID from token if available
+    let userId = null;
+    const authHeader = c.req.header("Authorization");
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      try {
+        const token = authHeader.split(" ")[1];
+        const decoded = await verify(token, c.env.JWT_SECRET);
+        userId = decoded.id;
+      } catch (error) {
+        console.warn("Invalid token:", error);
+      }
+    }
 
-    const blog = await prisma.blog.findFirst({ where: { id } });
+    const blog = await prisma.blog.findFirst({
+      where: { id },
+      include: {
+        author: {
+          select: {
+            id: true,
+            name: true
+          }
+        },
+        _count: {
+          select: {
+            likes: true
+          }
+        }
+      }
+    });
+
     if (!blog) {
       return c.json({ message: "Blog not found" }, 404);
     }
-    return c.json({ blog });
+
+    // Check if user has liked this blog
+    let userLiked = false;
+    if (userId) {
+      const like = await prisma.like.findFirst({
+        where: {
+          blogId: id,
+          userId
+        }
+      });
+      userLiked = !!like;
+    }
+
+    // Return blog with like information
+    return c.json({
+      blog: {
+        ...blog,
+        likeCount: blog._count.likes,
+        userLiked,
+        content: JSON.stringify(blog.content)
+      }
+    });
   } catch (error) {
-    c.status(500);
-    return c.json({ error: "Error fetching blog post", details: error });
+    console.error("Error fetching blog post:", error);
+    return c.json({ error: "Error fetching blog post", details: error }, 500);
+  }
+});
+
+// Like/unlike toggle endpoint
+blogRouter.post("/:id/like", async (c) => {
+  try {
+    // Get user from JWT token
+    const authHeader = c.req.header("Authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return c.json({ message: "Unauthorized" }, 401);
+    }
+
+    const token = authHeader.split(" ")[1];
+    const decoded = await verify(token, c.env.JWT_SECRET);
+    // Fix: use userId instead of id
+    const userId = decoded.userId;
+
+    const blogId = c.req.param("id");
+    const prisma = c.get("prisma");
+
+    // Check if blog exists
+    const blog = await prisma.blog.findUnique({
+      where: { id: blogId }
+    });
+
+    if (!blog) {
+      return c.json({ message: "Blog not found" }, 404);
+    }
+
+    // Check if already liked
+    const existingLike = await prisma.like.findFirst({
+      where: {
+        blogId,
+        userId
+      }
+    });
+
+    let liked = false;
+
+    if (existingLike) {
+      // Already liked, so unlike
+      await prisma.like.delete({
+        where: {
+          id: existingLike.id
+        }
+      });
+    } else {
+      // Not liked, so create a like
+      await prisma.like.create({
+        data: {
+          blog: { connect: { id: blogId } },
+          user: { connect: { id: userId } }
+        }
+      });
+      liked = true;
+    }
+
+    // Get updated like count
+    const likeCount = await prisma.like.count({
+      where: { blogId }
+    });
+
+    return c.json({ liked, likeCount });
+  } catch (error) {
+    console.error("Error liking blog:", error);
+    return c.json({ message: "Error processing like", error: error.message }, 500);
   }
 });

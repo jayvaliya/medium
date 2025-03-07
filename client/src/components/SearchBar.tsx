@@ -26,7 +26,7 @@ function SearchBar() {
 
         try {
 
-            const url = `http://localhost:8787/api/v1/blog/search?query=${encodeURIComponent(searchQuery)}`;
+            const url = `/api/v1/blog/search?query=${encodeURIComponent(searchQuery)}`;
             const { data } = await axios.get(url);
             setBlogs(data.blogs);
             setShowResults(true);

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { toast } from 'react-toastify';
 import { Link, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { apiClient } from "../utils/var";
+import { AxiosError } from 'axios'; // Import AxiosError type
 
 export default function SignUp() {
   const navigate = useNavigate();
@@ -27,7 +28,7 @@ export default function SignUp() {
     const id = toast.loading('Please wait...');
 
     try {
-      const response = await axios.post(
+      const response = await apiClient.post(
         "/api/v1/user/signup",
         {
           email: formValues.email,
@@ -35,6 +36,7 @@ export default function SignUp() {
           name: formValues.name,
         }
       );
+
       if (response.status === 200) {
         toast.update(id, {
           render: "Signup successful",
@@ -53,14 +55,17 @@ export default function SignUp() {
       }
     } catch (error) {
       console.error(error);
-      if (axios.isAxiosError(error) && error.response) {
+      // Fix: Cast the error to AxiosError type
+      const axiosError = error as AxiosError<{ message: string }>;
+
+      if (axiosError.response) {
         toast.update(id, {
-          render: error.response.data.message,
+          render: axiosError.response.data?.message || "An error occurred",
           type: 'error',
           isLoading: false,
           autoClose: 5000,
         });
-      } else if (axios.isAxiosError(error) && error.request) {
+      } else if (axiosError.request) {
         toast.update(id, {
           render: 'Server is not responding',
           type: 'error',
@@ -76,7 +81,6 @@ export default function SignUp() {
         });
       }
     }
-    console.log("Signup clicked");
   };
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {

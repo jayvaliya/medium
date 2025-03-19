@@ -3,12 +3,13 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import Blog from './pages/Blog';
 import Signin from './pages/Signin';
 import Signup from './pages/Signup';
-import Draft from './pages/Draft';
 import Navbar from './components/Navbar';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import Home from './pages/Home';
 import Profile from './pages/Profile';
+import Drafts from './pages/Drafts'; // Import Drafts component
+import Write from './pages/Write';
 
 function App() {
   return (
@@ -21,25 +22,24 @@ function App() {
             <Route path='/blog/:id' element={<Blog />} />
             <Route path='/signin' element={<Signin />} />
             <Route path='/signup' element={<Signup />} />
-            <Route path='/draft' element={<Draft />} />
-            <Route path='/new-Story' element={<Draft />} />
+            <Route path='/write' element={<Write />} />
             <Route path="/profile/:id" element={<Profile />} />
-
+            <Route path="/profile/drafts" element={<Drafts />} />
           </Routes>
         </div>
       </BrowserRouter>
 
       <ToastContainer
         position="top-right"
-        autoClose={5000}
+        autoClose={3000}
         hideProgressBar={false}
-        newestOnTop={false}
-        closeOnClick
+        newestOnTop={true}
+        closeOnClick={true}
         rtl={false}
-        pauseOnFocusLoss
+        pauseOnFocusLoss={false}
         draggable
-        pauseOnHover
-        theme="dark"
+        pauseOnHover={false}
+        theme="light"
       />
     </div>
   );

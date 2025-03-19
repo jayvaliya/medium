@@ -1,7 +1,7 @@
-import axios from "axios";
 import { useState, useRef, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { AiOutlineSearch } from "react-icons/ai";
+import { apiClient } from "../utils/var";
 
 type Blog = {
     id: string;
@@ -25,9 +25,7 @@ function SearchBar() {
         }
 
         try {
-
-            const url = `/api/v1/blog/search?query=${encodeURIComponent(searchQuery)}`;
-            const { data } = await axios.get(url);
+            const { data } = await apiClient.get(`/api/v1/blog/search?query=${encodeURIComponent(searchQuery)}`);
             setBlogs(data.blogs);
             setShowResults(true);
 
@@ -35,7 +33,6 @@ function SearchBar() {
             console.error("Error fetching blogs:", error);
         }
     };
-
 
     // Debounced search function
     useEffect(() => {

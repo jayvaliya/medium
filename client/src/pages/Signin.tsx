@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { toast } from 'react-toastify';
 import { Link, useNavigate } from "react-router-dom";
+import { apiClient } from "../utils/var";
 
 export default function Signin() {
 
@@ -18,22 +19,14 @@ export default function Signin() {
   const onSignin = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const response = await fetch('/api/v1/user/signin', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formValues),
-      });
+      const response = await apiClient.post('/api/v1/user/signin', formValues);
 
-      const data = await response.json();
-
-      if (response.ok) {
-        localStorage.setItem('token', data.token);
+      if (response.status === 200) {
+        localStorage.setItem('token', response.data.token);
         toast.success("Signed in successfully!");
         navigate('/'); // Redirect to dashboard or home page
       } else {
-        toast.error(data.message || "Error while logging in");
+        toast.error(response.data.message || "Error while logging in");
       }
     } catch (error) {
       console.error("Error during sign in:", error);

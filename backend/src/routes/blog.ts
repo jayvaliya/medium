@@ -19,7 +19,7 @@ export const blogRouter = new Hono<CustomContext>();
 
 // auth middleware
 blogRouter.use('*', async (c, next) => {
-  if (c.req.method === "GET") {
+  if (c.req.method === "GET" && c.req.path !== "/api/v1/blog/drafts") {
     await next();
     return;
   }
@@ -58,37 +58,49 @@ blogRouter.use("*", async (c, next) => {
   await next();
 });
 
+// Update the post blog endpoint
+
 // Post new blog
 blogRouter.post("/", async (c) => {
   try {
     const body = await c.req.json();
+    console.log("Received blog data:", body); // Debug logging
 
     const parsed = blogPostSchema.safeParse(body);
     if (!parsed.success) {
+      console.error("Schema validation failed:", parsed.error);
       return c.json({ message: "Invalid input", error: parsed.error }, 400);
     }
 
-    const { title, content } = parsed.data;
+    const { title, content, published = false } = parsed.data;
     const authorId = c.get("userId");
+
     if (!authorId) {
       return c.json({ message: "User ID not provided" }, 400);
     }
 
     const prisma = c.get("prisma");
 
-    // Ensure content is stored as JSON
+    // Include published flag in database creation
+    // Ensure content is properly formatted for PostgreSQL JSON type
     const blog = await prisma.blog.create({
       data: {
         title,
-        content: content,
+        // Convert content to proper format expected by Prisma's Json type
+        content: content, // Prisma will handle the conversion to JSON
         authorId,
+        published,
       },
     });
 
     return c.json({ message: "Blog created", blog }, 201);
   } catch (error) {
     console.error("Error creating blog post:", error);
-    return c.json({ message: "Error creating blog post", error: error.message }, 500);
+    return c.json({
+      message: "Error creating blog post",
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    }, 500);
   }
 });
 
@@ -101,11 +113,33 @@ blogRouter.put("/", async (c) => {
     if (!parsed.success) {
       return c.json({ message: "invalid input", error: parsed.error }, 400);
     }
-    const { title, content, id } = parsed.data;
+    const { title, content, id, published } = parsed.data;
 
     const prisma = c.get("prisma");
+    const userId = c.get("userId");
 
-    const blog = await prisma.blog.update({ where: { id }, data: { title, content } });
+    // Verify the blog belongs to this user
+    const existingBlog = await prisma.blog.findFirst({
+      where: {
+        id,
+        authorId: userId
+      }
+    });
+
+    if (!existingBlog) {
+      return c.json({ message: "Blog not found or you don't have permission" }, 404);
+    }
+
+    // Update with published flag if provided
+    const blog = await prisma.blog.update({
+      where: { id },
+      data: {
+        title,
+        content,
+        published: published !== undefined ? published : existingBlog.published
+      }
+    });
+
     return c.json({ message: "Blog updated", blog });
   } catch (error) {
     c.status(500);
@@ -125,23 +159,40 @@ blogRouter.get("/bulk", async (c) => {
       try {
         const token = authHeader.split(" ")[1];
         const decoded = await verify(token, c.env.JWT_SECRET);
-        // Fix: use userId instead of id
         userId = decoded.userId;
       } catch (error) {
         // Invalid token, continue without user context
+        console.error("Token verification error:", error);
       }
     }
 
+    // Build query to only show published blogs to everyone
+    // and only show unpublished blogs to their author
+    const where = {
+      OR: [
+        { published: true },
+        ...(userId ? [{ AND: [{ published: false }, { authorId: userId }] }] : [])
+      ]
+    };
+
     const blogs = await prisma.blog.findMany({
+      where,
       include: {
         author: {
-          select: { id: true, name: true }
+          select: {
+            id: true,
+            name: true,
+          },
         },
         _count: {
-          select: { likes: true }
-        }
+          select: {
+            likes: true,
+          },
+        },
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: {
+        createdAt: "desc",
+      },
     });
 
     // Get user likes if authenticated
@@ -150,19 +201,21 @@ blogRouter.get("/bulk", async (c) => {
       const likes = await prisma.like.findMany({
         where: {
           userId,
-          blogId: { in: blogs.map(b => b.id) }
         },
-        select: { blogId: true }
+        select: {
+          blogId: true,
+        },
       });
-
-      likes.forEach(like => userLikes.add(like.blogId));
+      likes.forEach((like) => userLikes.add(like.blogId));
     }
 
-    const transformedBlogs = blogs.map(blog => ({
+    // Transform blogs for response
+    const transformedBlogs = blogs.map((blog) => ({
       id: blog.id,
       title: blog.title,
       content: blog.content,
       author: blog.author,
+      published: blog.published,
       createdAt: blog.createdAt.toISOString(),
       likeCount: blog._count.likes,
       userLiked: userLikes.has(blog.id)
@@ -170,8 +223,48 @@ blogRouter.get("/bulk", async (c) => {
 
     return c.json({ blogs: transformedBlogs });
   } catch (error) {
+    console.error("Error fetching blogs:", error);
     c.status(500);
-    return c.json({ error: "Error fetching blogs", details: error });
+    return c.json({ error: "Error fetching blogs", details: error.message });
+  }
+});
+
+// Add a new endpoint to get only user's drafts
+blogRouter.get("/drafts", async (c) => {
+  try {
+    // Verify user is authenticated
+    const userId = c.get("userId");
+    if (!userId) {
+      return c.json({ message: "Authentication required" }, 401);
+    }
+
+    const prisma = c.get("prisma");
+
+    const drafts = await prisma.blog.findMany({
+      where: {
+        authorId: userId,
+        published: false
+      },
+      include: {
+        author: {
+          select: { id: true, name: true }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    return c.json({
+      drafts: drafts.map(draft => ({
+        id: draft.id,
+        title: draft.title,
+        content: JSON.stringify(draft.content),
+        createdAt: draft.createdAt.toISOString(),
+        author: draft.author
+      }))
+    });
+  } catch (error) {
+    console.error("Error fetching drafts:", error);
+    return c.json({ error: "Error fetching drafts", details: error.message }, 500);
   }
 });
 
@@ -186,9 +279,28 @@ blogRouter.get('/search', async (c) => {
 
     const prisma = c.get('prisma');
 
+    // Extract user ID from token if available
+    let userId = null;
+    const authHeader = c.req.header("Authorization");
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      try {
+        const token = authHeader.split(" ")[1];
+        const decoded = await verify(token, c.env.JWT_SECRET);
+        userId = decoded.userId;
+      } catch (error) {
+        // Invalid token, continue without user context
+      }
+    }
+
     const blogs = await prisma.blog.findMany({
       where: {
-        OR: [
+        AND: [
+          {
+            OR: [
+              { published: true },
+              ...(userId ? [{ AND: [{ published: false }, { authorId: userId }] }] : [])
+            ]
+          },
           { title: { contains: query, mode: 'insensitive' } }
         ]
       }
@@ -335,5 +447,41 @@ blogRouter.post("/:id/like", async (c) => {
   } catch (error) {
     console.error("Error liking blog:", error);
     return c.json({ message: "Error processing like", error: error.message }, 500);
+  }
+});
+
+// Delete blog/draft
+blogRouter.delete('/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const prisma = c.get('prisma');
+    const userId = c.get('userId');
+
+    // Verify blog belongs to user
+    const blog = await prisma.blog.findFirst({
+      where: {
+        id,
+        authorId: userId
+      }
+    });
+
+    if (!blog) {
+      return c.json({ message: "Blog not found or you don't have permission" }, 404);
+    }
+
+    // Delete related likes first
+    await prisma.like.deleteMany({
+      where: { blogId: id }
+    });
+
+    // Delete the blog
+    await prisma.blog.delete({
+      where: { id }
+    });
+
+    return c.json({ message: "Blog deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting blog:", error);
+    return c.json({ message: "Error deleting blog", error: error.message }, 500);
   }
 });

@@ -25,6 +25,33 @@ userRouter.use("*", async (c, next) => {
     await next();
 })
 
+// Authentication middleware to extract userId from JWT
+// userRouter.use("/:id", async (c, next) => {
+//     try {
+//         // Get the authorization header
+//         const authHeader = c.req.header("Authorization");
+
+//         if (authHeader && authHeader.startsWith("Bearer ")) {
+//             const token = authHeader.split(" ")[1];
+//             try {
+//                 const payload = await verify(token, c.env.JWT_SECRET);
+//                 if (payload && payload.userId) {
+//                     // Set the userId in the context
+//                     c.set('userId', payload.userId);
+//                 }
+//             } catch (error) {
+//                 console.error("JWT verification error:", error);
+//                 // Continue without setting userId
+//             }
+//         }
+
+//         await next();
+//     } catch (error) {
+//         console.error("Auth middleware error:", error);
+//         await next();
+//     }
+// });
+
 userRouter.post("/signup", async (c) => {
     try {
         const body = await c.req.json();
@@ -127,34 +154,33 @@ userRouter.get("/me", async (c) => {
 // get user profile
 userRouter.get("/:id", async (c) => {
     try {
-        const userId = c.req.param('id');
-
-        // @ts-ignore
+        const id = c.req.param('id');
         const prisma = c.get('prisma');
 
+        // Extract user ID from token (note that we want to get the authenticated user ID)
+        let currentUserId = null;
+        const authHeader = c.req.header("Authorization");
+
+        if (authHeader && authHeader.startsWith("Bearer ")) {
+            try {
+                const token = authHeader.split(" ")[1];
+                const decoded = await verify(token, c.env.JWT_SECRET);
+                currentUserId = decoded.userId;
+
+                // Debug logging
+                console.log("Token extracted userId:", currentUserId);
+                console.log("Profile id being viewed:", id);
+            } catch (error) {
+                console.error("Token verification error:", error);
+            }
+        }
+
         const user = await prisma.user.findUnique({
-            where: { id: userId },
+            where: { id },
             select: {
                 id: true,
-                name: true,
                 email: true,
-                posts: {
-                    select: {
-                        id: true,
-                        title: true,
-                        content: true,
-                        published: true,
-                    },
-                    take: 5,
-                    orderBy: {
-                        id: 'desc'
-                    }
-                },
-                _count: {
-                    select: {
-                        likes: true
-                    }
-                }
+                name: true,
             }
         });
 
@@ -162,13 +188,71 @@ userRouter.get("/:id", async (c) => {
             return c.json({ message: "User not found" }, 404);
         }
 
-        // Return user with like count
+        // Get published posts
+        const posts = await prisma.blog.findMany({
+            where: {
+                authorId: id,
+                published: true
+            },
+            select: {
+                id: true,
+                title: true,
+                content: true,
+                createdAt: true,
+                published: true
+            },
+            orderBy: {
+                createdAt: 'desc'
+            }
+        });
+
+        // Get drafts (only for the user themselves)
+        let drafts = [];
+        // Convert both to strings before comparison to ensure consistency
+        if (String(id) === String(currentUserId)) {
+            console.log("Fetching drafts for user:", id);
+
+            drafts = await prisma.blog.findMany({
+                where: {
+                    authorId: id,
+                    published: false
+                },
+                select: {
+                    id: true,
+                    title: true,
+                    content: true,
+                    createdAt: true,
+                    published: true
+                },
+                orderBy: {
+                    createdAt: 'desc'
+                }
+            });
+
+            console.log(`Found ${drafts.length} drafts for user ${id}`);
+        } else {
+            console.log("Not fetching drafts - user doesn't match currentUserId");
+            console.log(`Profile ID: ${id}, Current User ID: ${currentUserId}`);
+        }
+
+        // Get like count
+        const likeCount = await prisma.like.count({
+            where: {
+                blog: {
+                    authorId: id
+                }
+            }
+        });
+
         return c.json({
             ...user,
-            likeCount: user._count.likes
-        }, 200);
-    } catch (error: any) {
+            posts,
+            drafts,
+            likeCount
+        });
+
+    } catch (error) {
         console.error("Error fetching user profile:", error);
-        return c.json({ message: "Error while fetching profile", error: error.message }, 500);
+        return c.json({ message: "Error fetching user profile", error: error.message }, 500);
     }
 });

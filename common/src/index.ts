@@ -11,18 +11,24 @@ export const sighupSchema = z.object({
     name: z.string().optional(),
 })
 
+// Update the blogPostSchema to allow different content formats
 export const blogPostSchema = z.object({
     title: z.string(),
     content: z.array(z.object({
         insert: z.string().or(z.record(z.any())).optional(),
         attributes: z.record(z.any()).optional()
-    }))
+    })).or(z.string()),
+    published: z.boolean().optional().default(false)
 });
 
 export const blogUpdateSchema = z.object({
     title: z.string(),
-    content: z.string(),
-    id: z.string()
+    content: z.array(z.object({
+        insert: z.string().or(z.record(z.any())).optional(),
+        attributes: z.record(z.any()).optional()
+    })).or(z.string()),
+    id: z.string(),
+    published: z.boolean().optional()
 })
 
 export const searchSchema = z.object({

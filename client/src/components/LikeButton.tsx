@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import axios from 'axios';
+import { apiClient } from "../utils/var";
 
 type LikeButtonProps = {
     blogId: string;
@@ -30,10 +30,9 @@ export default function LikeButton({
 
         setIsLoading(true);
         try {
-            const { data } = await axios.post(
+            const { data } = await apiClient.post(
                 `/api/v1/blog/${blogId}/like`,
-                {},
-                { headers: { Authorization: `Bearer ${token}` } }
+                {}
             );
 
             setIsLiked(data.liked);
@@ -54,8 +53,8 @@ export default function LikeButton({
             onClick={handleLike}
             disabled={isLoading}
             className={`flex items-center gap-1 ${isLiked
-                    ? 'text-emerald-600'
-                    : 'text-gray-500 hover:text-gray-700'
+                ? 'text-emerald-600'
+                : 'text-gray-500 hover:text-gray-700'
                 } transition-colors focus:outline-none`}
             aria-label={isLiked ? "Unlike post" : "Like post"}
         >

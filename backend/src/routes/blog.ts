@@ -147,10 +147,12 @@ blogRouter.put("/", async (c) => {
   }
 });
 
-// get all blogs
+// get all blogs with pagination support
 blogRouter.get("/bulk", async (c) => {
   try {
     const prisma = c.get("prisma");
+    const limit = Number(c.req.query("limit")) || 10;
+    const cursor = c.req.query("cursor");
 
     // Extract user ID from token if available
     let userId = null;
@@ -161,7 +163,6 @@ blogRouter.get("/bulk", async (c) => {
         const decoded = await verify(token, c.env.JWT_SECRET);
         userId = decoded.userId;
       } catch (error) {
-        // Invalid token, continue without user context
         console.error("Token verification error:", error);
       }
     }
@@ -175,8 +176,17 @@ blogRouter.get("/bulk", async (c) => {
       ]
     };
 
+    // Handling cursor-based pagination
+    const cursorObj = cursor ? { id: cursor } : undefined;
+
     const blogs = await prisma.blog.findMany({
+      take: limit,
+      skip: cursor ? 1 : 0, // Skip the cursor item
+      cursor: cursorObj,
       where,
+      orderBy: {
+        createdAt: "desc",
+      },
       include: {
         author: {
           select: {
@@ -189,9 +199,6 @@ blogRouter.get("/bulk", async (c) => {
             likes: true,
           },
         },
-      },
-      orderBy: {
-        createdAt: "desc",
       },
     });
 
@@ -221,11 +228,19 @@ blogRouter.get("/bulk", async (c) => {
       userLiked: userLikes.has(blog.id)
     }));
 
-    return c.json({ blogs: transformedBlogs });
+    // Get the next cursor
+    const nextCursor = blogs.length === limit ? blogs[blogs.length - 1].id : null;
+
+    return c.json({
+      blogs: transformedBlogs,
+      nextCursor
+    });
   } catch (error) {
     console.error("Error fetching blogs:", error);
-    c.status(500);
-    return c.json({ error: "Error fetching blogs", details: error.message });
+    return c.json({
+      error: "Error fetching blogs",
+      details: error.message
+    }, 500);
   }
 });
 

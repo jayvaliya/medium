@@ -20,6 +20,7 @@ export default function Navbar() {
                 const token = localStorage.getItem("token");
                 if (!token) {
                     setIsLoading(false);
+                    setUser(null);
                     return;
                 }
 
@@ -34,13 +35,26 @@ export default function Navbar() {
                 const axiosError = error as AxiosError;
                 if (axiosError.response?.status === 401) {
                     localStorage.removeItem("token");
+                    setUser(null);
                 }
             } finally {
                 setIsLoading(false);
             }
         };
 
+        // Check auth state when component mounts or when token changes
         fetchUser();
+
+        // Add event listener for storage changes (if user logs in/out in another tab)
+        const handleStorageChange = (e: StorageEvent) => {
+            if (e.key === 'token') {
+                fetchUser();
+            }
+        };
+
+        window.addEventListener('storage', handleStorageChange);
+        return () => window.removeEventListener('storage', handleStorageChange);
+
     }, [setUser]);
 
     // Close dropdown when clicking outside

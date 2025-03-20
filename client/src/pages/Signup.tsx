@@ -3,8 +3,11 @@ import { toast } from 'react-toastify';
 import { Link, useNavigate } from 'react-router-dom';
 import { apiClient } from "../utils/var";
 import { AxiosError } from 'axios'; // Import AxiosError type
+import { useRecoilState } from 'recoil';
+import { userAtom } from '../store/user';
 
 export default function SignUp() {
+  const [_, setUser] = useRecoilState(userAtom);
   const navigate = useNavigate();
   const [formValues, setFormValues] = useState({
     email: '',
@@ -45,6 +48,11 @@ export default function SignUp() {
           autoClose: 5000,
         });
         localStorage.setItem('token', response.data.token);
+        setUser({
+          id: response.data.userId,
+          name: formValues.name,
+          email: formValues.email
+        });
         navigate("/");
       } else {
         toast.update(id, {

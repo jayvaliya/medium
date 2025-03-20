@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { toast } from 'react-toastify';
 import { Link, useNavigate } from "react-router-dom";
 import { apiClient } from "../utils/var";
+import { useRecoilState } from 'recoil';
+import { userAtom } from '../store/user';
 
 export default function Signin() {
 
@@ -10,6 +12,7 @@ export default function Signin() {
     email: '',
     password: '',
   });
+  const [_, setUser] = useRecoilState(userAtom);
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;
@@ -18,12 +21,23 @@ export default function Signin() {
 
   const onSignin = async (e: React.FormEvent) => {
     e.preventDefault();
+    const id = toast.loading("Please wait...");
     try {
       const response = await apiClient.post('/api/v1/user/signin', formValues);
 
       if (response.status === 200) {
+        toast.update(id, {
+          render: "Login successful",
+          type: 'success',
+          isLoading: false,
+          autoClose: 5000,
+        });
         localStorage.setItem('token', response.data.token);
-        toast.success("Signed in successfully!");
+        setUser({
+          id: response.data.userId,
+          name: response.data.name,
+          email: formValues.email
+        });
         navigate('/'); // Redirect to dashboard or home page
       } else {
         toast.error(response.data.message || "Error while logging in");

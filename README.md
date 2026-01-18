@@ -1,6 +1,6 @@
-Here's your blog website's README in markdown format:
-
 # Modern Blog Platform
+
+🔗 **Live Demo:** [https://blogpen.jayvaliya.me/](https://blogpen.jayvaliya.me/)
 
 A full-featured blogging platform built with React, TypeScript, and EditorJS. This platform allows users to create, read, and manage blog posts with a modern, responsive interface.
 
